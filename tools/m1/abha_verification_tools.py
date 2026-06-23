@@ -15,26 +15,41 @@ def register_abha_verification_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def verify_abha_init(request: VerifyABHAInitInput) -> Dict[str, Any]:
         """
-        Initiate ABHA verification. Sends an OTP to the patient based on the chosen method.
+        STEP 1 of ABHA verification. Call this first to verify a patient's existing ABHA.
 
-        Methods:
-        - 'aadhaar_otp': Aadhaar number, OTP via UIDAI
-        - 'abha_number_aadhaar_otp': ABHA number, OTP via UIDAI
-        - 'abha_number_abha_otp': ABHA number, OTP via ABDM
-        - 'mobile_otp': mobile number, OTP via ABDM (may return multiple accounts)
+        Choose a method based on what identifier the patient provides:
+        - 'aadhaar_otp'              → patient provides Aadhaar number, OTP sent via UIDAI
+        - 'abha_number_aadhaar_otp'  → patient provides ABHA number (14-digit), OTP sent via UIDAI
+        - 'abha_number_abha_otp'     → patient provides ABHA number (14-digit), OTP sent via ABDM
+        - 'mobile_otp'               → patient provides mobile number, OTP sent via ABDM
 
-        Returns txn_id. Call verify_abha_confirm next with the OTP.
+        The identifier must match the chosen method:
+        - aadhaar_otp              → 12-digit Aadhaar number
+        - abha_number_* methods    → ABHA number in format 91-XXXX-XXXX-XXXX
+        - mobile_otp               → 10-digit mobile number
+
+        Response contains txn_id. Save it for the next step.
+        Call verify_abha_confirm next with the txn_id from this response and the OTP the patient receives.
         """
         return await _service.verify_abha_init(request.method, request.identifier)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def verify_abha_confirm(request: VerifyABHAConfirmInput) -> Dict[str, Any]:
         """
-        Confirm ABHA verification with OTP, or select an account when multiple are returned.
+        STEP 2 of ABHA verification. Call this after verify_abha_init.
 
-        OTP step: provide txn_id + otp (leave abha_number empty).
-        Account selection (skip_state='abha_select'): provide txn_id + abha_number (leave otp empty).
+        Use the txn_id from verify_abha_init's response.
 
-        Returns profile on success (skip_state='abha_end') or abha_profiles list for selection.
+        This tool handles two sub-steps depending on what the response returns:
+
+        Sub-step A — OTP verification (always the first call):
+          Provide txn_id + otp (the OTP the patient received). Leave abha_number empty.
+
+        Sub-step B — Account selection (only if response contains skip_state = 'abha_select'):
+          The response will contain an abha_profiles list. Show it to the patient, let them pick.
+          Call this tool again with txn_id + abha_number (the ABHA number they selected). Leave otp empty.
+
+        Final response (skip_state = 'abha_end') contains the patient's verified ABHA profile.
+        Stop here — no further tool call needed.
         """
         return await _service.verify_abha_confirm(request.txn_id, request.otp, request.abha_number)
