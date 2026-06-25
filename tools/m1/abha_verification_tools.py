@@ -1,19 +1,27 @@
 from typing import Any, Dict
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
 from clients.abdm_gateway_client import ABDMGatewayClient
 from services.m1.abha_verification_service import AbhaVerificationService
+from state.validator import FlowValidator
 from tools.m1.models import VerifyABHAInitInput, VerifyABHAConfirmInput
 
 _client = ABDMGatewayClient()
 _service = AbhaVerificationService(_client)
 
 
-def register_abha_verification_tools(mcp: FastMCP) -> None:
+def _session_id(ctx: Context) -> str:
+    try:
+        return ctx.meta.get("mcp-session-id", "default") or "default"
+    except Exception:
+        return "default"
+
+
+def register_abha_verification_tools(mcp: FastMCP, validator: FlowValidator) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def verify_abha_init(request: VerifyABHAInitInput) -> Dict[str, Any]:
+    async def verify_abha_init(request: VerifyABHAInitInput, ctx: Context) -> Dict[str, Any]:
         """
         Sends an OTP to the patient via the chosen method to begin ABHA verification.
 
@@ -30,10 +38,11 @@ def register_abha_verification_tools(mcp: FastMCP) -> None:
 
         Do not mismatch method and identifier — the request will be rejected.
         """
+        await validator.validate_and_record(_session_id(ctx), "verify_abha_init")
         return await _service.verify_abha_init(request.method, request.identifier)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def verify_abha_confirm(request: VerifyABHAConfirmInput) -> Dict[str, Any]:
+    async def verify_abha_confirm(request: VerifyABHAConfirmInput, ctx: Context) -> Dict[str, Any]:
         """
         Verifies the OTP sent by verify_abha_init or selects an ABHA account to complete verification.
 
@@ -50,4 +59,5 @@ def register_abha_verification_tools(mcp: FastMCP) -> None:
         Do not provide both otp and abha_number in the same call — they serve different sub-steps.
         Do not call without the txn_id from verify_abha_init.
         """
+        await validator.validate_and_record(_session_id(ctx), "verify_abha_confirm")
         return await _service.verify_abha_confirm(request.txn_id, request.otp, request.abha_number)

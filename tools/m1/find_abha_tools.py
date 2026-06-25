@@ -1,10 +1,11 @@
 import base64
 from typing import Any, Dict
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
 from clients.abdm_gateway_client import ABDMGatewayClient
 from services.m1.find_abha_service import FindAbhaService
+from state.validator import FlowValidator
 from tools.m1.models import (
     SearchABHAInput,
     FindABHAInitInput,
@@ -19,10 +20,17 @@ _client = ABDMGatewayClient()
 _service = FindAbhaService(_client)
 
 
-def register_find_abha_tools(mcp: FastMCP) -> None:
+def _session_id(ctx: Context) -> str:
+    try:
+        return ctx.meta.get("mcp-session-id", "default") or "default"
+    except Exception:
+        return "default"
+
+
+def register_find_abha_tools(mcp: FastMCP, validator: FlowValidator) -> None:
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
-    async def search_abha(request: SearchABHAInput) -> Dict[str, Any]:
+    async def search_abha(request: SearchABHAInput, ctx: Context) -> Dict[str, Any]:
         """
         Searches for ABHA profiles linked to a mobile number.
 
@@ -34,10 +42,11 @@ def register_find_abha_tools(mcp: FastMCP) -> None:
 
         Do not assume a single result is correct without patient confirmation — a mobile may be linked to multiple ABHA profiles.
         """
+        await validator.validate_and_record(_session_id(ctx), "search_abha")
         return await _service.search_abha(request.mobile)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def find_abha_init(request: FindABHAInitInput) -> Dict[str, Any]:
+    async def find_abha_init(request: FindABHAInitInput, ctx: Context) -> Dict[str, Any]:
         """
         Sends an OTP to verify ownership of the ABHA profile selected from the results returned by search_abha.
 
@@ -53,10 +62,11 @@ def register_find_abha_tools(mcp: FastMCP) -> None:
         Do not call without the txn_id from search_abha.
         Do not use an index not from the abha list returned by search_abha.
         """
+        await validator.validate_and_record(_session_id(ctx), "find_abha_init")
         return await _service.find_abha_init(request.txn_id, request.index, request.otp_system)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def find_abha_verify(request: FindABHAVerifyInput) -> Dict[str, Any]:
+    async def find_abha_verify(request: FindABHAVerifyInput, ctx: Context) -> Dict[str, Any]:
         """
         Verifies the OTP sent by find_abha_init to retrieve the patient's ABHA profile.
 
@@ -68,6 +78,7 @@ def register_find_abha_tools(mcp: FastMCP) -> None:
         Do not call without the txn_id from find_abha_init.
         Do not call without first completing find_abha_init.
         """
+        await validator.validate_and_record(_session_id(ctx), "find_abha_verify")
         return await _service.find_abha_verify(request.txn_id, request.otp)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))

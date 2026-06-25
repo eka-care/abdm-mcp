@@ -1,12 +1,11 @@
 import logging
 from typing import Any, Dict
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
 from clients.abdm_gateway_client import ABDMGatewayClient
 from services.m1.abha_enrollment_service import AbhaEnrollmentService
-
-logger = logging.getLogger(__name__)
+from state.validator import FlowValidator
 from tools.m1.models import (
     AadhaarEnrollmentInitInput,
     AadhaarEnrollmentVerifyOTPInput,
@@ -16,15 +15,25 @@ from tools.m1.models import (
     EnrollABHAByBiometricInput,
 )
 
+logger = logging.getLogger(__name__)
+
 _client = ABDMGatewayClient()
 _service = AbhaEnrollmentService(_client)
 
 
-def register_abha_enrollment_tools(mcp: FastMCP) -> None:
+def _session_id(ctx: Context) -> str:
+    try:
+        return ctx.meta.get("mcp-session-id", "default") or "default"
+    except Exception:
+        return "default"
+
+
+def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> None:
 
     logger.info("Registering ABHA enrollment tools...")
+
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def aadhaar_enrollment_init(request: AadhaarEnrollmentInitInput) -> Dict[str, Any]:
+    async def aadhaar_enrollment_init(request: AadhaarEnrollmentInitInput, ctx: Context) -> Dict[str, Any]:
         """
         Sends an OTP to the mobile number linked to the patient's Aadhaar.
 
@@ -36,11 +45,12 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
 
         Do not call if an enrollment session is already in progress for this patient — it will invalidate the existing txn_id.
         """
+        await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_init")
         logger.info(f"aadhaar_enrollment_init called: aadhaar_number={request.aadhaar_number}")
         return await _service.aadhaar_enrollment_init(request.aadhaar_number)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def aadhaar_enrollment_verify_otp(request: AadhaarEnrollmentVerifyOTPInput) -> Dict[str, Any]:
+    async def aadhaar_enrollment_verify_otp(request: AadhaarEnrollmentVerifyOTPInput, ctx: Context) -> Dict[str, Any]:
         """
         Verifies the OTP sent by aadhaar_enrollment_init and advances the enrollment state.
 
@@ -58,10 +68,11 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
         Do not call without the txn_id from aadhaar_enrollment_init.
         Do not call again after skip_state = abha_end.
         """
+        await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_verify_otp")
         return await _service.aadhaar_enrollment_verify_otp(request.txn_id, request.otp, request.mobile)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def aadhaar_enrollment_verify_mobile_otp(request: AadhaarEnrollmentVerifyMobileOTPInput) -> Dict[str, Any]:
+    async def aadhaar_enrollment_verify_mobile_otp(request: AadhaarEnrollmentVerifyMobileOTPInput, ctx: Context) -> Dict[str, Any]:
         """
         Verifies the OTP sent to the patient's mobile by aadhaar_enrollment_verify_otp as a secondary confirmation step.
 
@@ -77,10 +88,11 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
         Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
         Do not use the txn_id from aadhaar_enrollment_init — it must be the txn_id from aadhaar_enrollment_verify_otp.
         """
+        await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_verify_mobile_otp")
         return await _service.aadhaar_enrollment_verify_mobile_otp(request.txn_id, request.otp)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-    async def aadhaar_enrollment_suggest_address(request: AadhaarEnrollmentSuggestAddressInput) -> Dict[str, Any]:
+    async def aadhaar_enrollment_suggest_address(request: AadhaarEnrollmentSuggestAddressInput, ctx: Context) -> Dict[str, Any]:
         """
         Returns a list of available ABHA address suggestions derived from the patient's Aadhaar data.
 
@@ -95,10 +107,11 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
         Do not call unless the previous step returned skip_state = abha_create.
         Do not use the txn_id from aadhaar_enrollment_init directly.
         """
+        await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_suggest_address")
         return await _service.aadhaar_enrollment_suggest_address(request.txn_id, request.user_detail.model_dump())
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def aadhaar_enrollment_create_address(request: AadhaarEnrollmentCreateAddressInput) -> Dict[str, Any]:
+    async def aadhaar_enrollment_create_address(request: AadhaarEnrollmentCreateAddressInput, ctx: Context) -> Dict[str, Any]:
         """
         Creates the ABHA address the patient selected from the suggestions returned by aadhaar_enrollment_suggest_address, completing enrollment.
 
@@ -111,10 +124,11 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
         Do not include the @abdm suffix in abha_address.
         Do not call without the txn_id from aadhaar_enrollment_suggest_address.
         """
+        await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_create_address")
         return await _service.aadhaar_enrollment_create_address(request.txn_id, request.abha_address)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
-    async def enroll_abha_by_biometric(request: EnrollABHAByBiometricInput) -> Dict[str, Any]:
+    async def enroll_abha_by_biometric(request: EnrollABHAByBiometricInput, ctx: Context) -> Dict[str, Any]:
         """
         Enrolls a patient for ABHA in a single step using a biometric PID block captured from a certified device.
 
@@ -124,4 +138,5 @@ def register_abha_enrollment_tools(mcp: FastMCP) -> None:
         Do not use if no certified biometric device is present — use the Aadhaar OTP flow instead.
         Do not pass a manually constructed or mock PID block — ABDM validates the device signature.
         """
+        await validator.validate_and_record(_session_id(ctx), "enroll_abha_by_biometric")
         return await _service.enroll_abha_by_biometric(request.aadhaar_number, request.pid, request.mobile_number)
