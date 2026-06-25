@@ -11,8 +11,8 @@ class Settings(BaseSettings):
 
     gateway_base_url: str = Field(default="http://localhost:8080")
     gateway_timeout: int = Field(default=30)
-    facility_id: str = Field(default="FAC-001")
-    gateway_api_key: str = Field(default="test-key-123")
+    facility_id: str = Field(default="")
+    gateway_api_key: str = Field(default="")
 
 
 settings = Settings()
