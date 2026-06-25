@@ -1,9 +1,12 @@
+import logging
 from typing import Any, Dict
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from clients.abdm_gateway_client import ABDMGatewayClient
 from services.m1.abha_enrollment_service import AbhaEnrollmentService
+
+logger = logging.getLogger(__name__)
 from tools.m1.models import (
     AadhaarEnrollmentInitInput,
     AadhaarEnrollmentVerifyOTPInput,
@@ -19,95 +22,106 @@ _service = AbhaEnrollmentService(_client)
 
 def register_abha_enrollment_tools(mcp: FastMCP) -> None:
 
+    logger.info("Registering ABHA enrollment tools...")
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_init(request: AadhaarEnrollmentInitInput) -> Dict[str, Any]:
         """
-        STEP 1 of Aadhaar enrollment. Call this first to begin enrolling a patient for ABHA.
-
         Sends an OTP to the mobile number linked to the patient's Aadhaar.
-        Ask the patient for their 12-digit Aadhaar number before calling this.
 
-        Response contains txn_id. Save it — every subsequent step in this enrollment
-        session requires it.
+        Accepts: aadhaar_number (12-digit string)
+        Returns: txn_id
 
-        Call aadhaar_enrollment_verify_otp next with the txn_id from this response
-        and the OTP the patient receives on their mobile.
+        The patient will receive an OTP on their Aadhaar-linked mobile sent by this tool. Ask the patient for that OTP and their 10-digit mobile number.
+        Follow-up: pass the txn_id returned by this tool, the OTP sent by this tool that the patient provides, and their mobile number to aadhaar_enrollment_verify_otp.
+
+        Do not call if an enrollment session is already in progress for this patient — it will invalidate the existing txn_id.
         """
+        logger.info(f"aadhaar_enrollment_init called: aadhaar_number={request.aadhaar_number}")
         return await _service.aadhaar_enrollment_init(request.aadhaar_number)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_verify_otp(request: AadhaarEnrollmentVerifyOTPInput) -> Dict[str, Any]:
         """
-        STEP 2 of Aadhaar enrollment. Call this after aadhaar_enrollment_init.
+        Verifies the OTP sent by aadhaar_enrollment_init and advances the enrollment state.
 
-        Use the txn_id from aadhaar_enrollment_init's response.
-        Ask the patient for the OTP they received and their 10-digit mobile number.
+        Accepts:
+        - txn_id returned by aadhaar_enrollment_init
+        - otp sent by aadhaar_enrollment_init that the patient received on their Aadhaar-linked mobile
+        - mobile (10-digit, provided by the patient)
+        Returns: txn_id, skip_state
 
-        Response contains txn_id and skip_state. Based on skip_state, call next:
-        - 'confirm_mobile_otp' → call aadhaar_enrollment_verify_mobile_otp(txn_id from this response, new OTP patient receives)
-        - 'abha_create'        → call aadhaar_enrollment_suggest_address(txn_id from this response)
-        - 'abha_select'        → show abha_profiles list from this response to the patient, let them pick one, no further tool call needed unless creating new address
-        - 'abha_end'           → enrollment complete, patient's ABHA profile is in this response, stop here
+        Follow-up depends on skip_state:
+        - confirm_mobile_otp → this tool will trigger a new OTP to the patient's mobile, ask the patient for that OTP, pass the txn_id returned by this tool and that OTP to aadhaar_enrollment_verify_mobile_otp
+        - abha_create        → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
+        - abha_end           → enrollment complete, ABHA profile is in this response
+
+        Do not call without the txn_id from aadhaar_enrollment_init.
+        Do not call again after skip_state = abha_end.
         """
         return await _service.aadhaar_enrollment_verify_otp(request.txn_id, request.otp, request.mobile)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_verify_mobile_otp(request: AadhaarEnrollmentVerifyMobileOTPInput) -> Dict[str, Any]:
         """
-        STEP 3a of Aadhaar enrollment. Call this only when aadhaar_enrollment_verify_otp
-        returned skip_state = 'confirm_mobile_otp'.
+        Verifies the OTP sent to the patient's mobile by aadhaar_enrollment_verify_otp as a secondary confirmation step.
 
-        Use the txn_id from aadhaar_enrollment_verify_otp's response.
-        Ask the patient for the new OTP they received on their mobile.
+        Accepts:
+        - txn_id returned by aadhaar_enrollment_verify_otp
+        - otp sent to the patient's mobile when aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp
+        Returns: txn_id, skip_state
 
-        Response contains txn_id and updated skip_state. Based on skip_state, call next:
-        - 'abha_create' → call aadhaar_enrollment_suggest_address(txn_id from this response)
-        - 'abha_select' → show abha_profiles list to the patient
-        - 'abha_end'    → enrollment complete, ABHA profile is in this response, stop here
+        Follow-up depends on skip_state:
+        - abha_create → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
+        - abha_end    → enrollment complete, ABHA profile is in this response
+
+        Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
+        Do not use the txn_id from aadhaar_enrollment_init — it must be the txn_id from aadhaar_enrollment_verify_otp.
         """
         return await _service.aadhaar_enrollment_verify_mobile_otp(request.txn_id, request.otp)
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def aadhaar_enrollment_suggest_address(request: AadhaarEnrollmentSuggestAddressInput) -> Dict[str, Any]:
         """
-        STEP 3b of Aadhaar enrollment. Call this only when a previous step returned
-        skip_state = 'abha_create'.
+        Returns a list of available ABHA address suggestions derived from the patient's Aadhaar data.
 
-        Use the txn_id from that step's response.
-        Optionally provide the patient's name and date of birth in user_detail to get
-        more personalized suggestions — leave fields empty if not available.
+        Accepts:
+        - txn_id returned by aadhaar_enrollment_verify_otp or aadhaar_enrollment_verify_mobile_otp (whichever was the last step that returned skip_state = abha_create)
+        - user_detail (optional: name, dob — improves suggestion relevance)
+        Returns: list of suggested ABHA addresses, txn_id
 
-        Response contains a list of suggested ABHA addresses.
-        Show the list to the patient and ask them to pick one.
+        Present the suggestions to the patient and ask them to choose one.
+        Follow-up: pass the txn_id returned by this tool and the address the patient chose to aadhaar_enrollment_create_address.
 
-        Call aadhaar_enrollment_create_address next with the txn_id from this response
-        and the abha_address the patient chose.
+        Do not call unless the previous step returned skip_state = abha_create.
+        Do not use the txn_id from aadhaar_enrollment_init directly.
         """
         return await _service.aadhaar_enrollment_suggest_address(request.txn_id, request.user_detail.model_dump())
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_create_address(request: AadhaarEnrollmentCreateAddressInput) -> Dict[str, Any]:
         """
-        FINAL STEP of Aadhaar enrollment. Call this after aadhaar_enrollment_suggest_address.
+        Creates the ABHA address the patient selected from the suggestions returned by aadhaar_enrollment_suggest_address, completing enrollment.
 
-        Use the txn_id from aadhaar_enrollment_suggest_address's response.
-        Use the abha_address the patient selected from the suggestions list (without @abdm suffix).
+        Accepts:
+        - txn_id returned by aadhaar_enrollment_suggest_address
+        - abha_address chosen by the patient from the list returned by aadhaar_enrollment_suggest_address (without @abdm suffix)
+        Returns: complete ABHA profile
 
-        On success, response contains the patient's complete ABHA profile.
-        Enrollment is now done — no further tool call needed.
+        Do not pass an address not returned by aadhaar_enrollment_suggest_address — ABDM will reject it.
+        Do not include the @abdm suffix in abha_address.
+        Do not call without the txn_id from aadhaar_enrollment_suggest_address.
         """
         return await _service.aadhaar_enrollment_create_address(request.txn_id, request.abha_address)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def enroll_abha_by_biometric(request: EnrollABHAByBiometricInput) -> Dict[str, Any]:
         """
-        Single-step ABHA enrollment using biometric authentication (fingerprint or iris via UIDAI).
-        Use this instead of the Aadhaar OTP flow when a biometric device is available.
+        Enrolls a patient for ABHA in a single step using a biometric PID block captured from a certified device.
 
-        Requires the patient's Aadhaar number, mobile number, and the PID block
-        captured from the biometric device.
+        Accepts: aadhaar_number (12-digit), pid (PID block from biometric device), mobile_number (10-digit)
+        Returns: complete ABHA profile
 
-        On success, response contains the patient's complete ABHA profile.
-        No follow-up tool call needed.
+        Do not use if no certified biometric device is present — use the Aadhaar OTP flow instead.
+        Do not pass a manually constructed or mock PID block — ABDM validates the device signature.
         """
         return await _service.enroll_abha_by_biometric(request.aadhaar_number, request.pid, request.mobile_number)

@@ -19,42 +19,47 @@ def register_abha_address_verification_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True))
     async def search_abha_address_auth_methods(request: SearchABHAAddressAuthMethodsInput) -> Dict[str, Any]:
         """
-        STEP 1 of ABHA address verification. Call this first to discover available auth methods.
+        Returns the authentication methods available for a given ABHA address.
 
-        Ask the patient for their ABHA address (format: name@abdm) before calling this.
+        Accepts: abha_address (format: name@abdm)
+        Returns: list of available auth methods (e.g. mobile, aadhaar)
 
-        Response contains a list of available auth methods for that address (e.g. 'mobile', 'aadhaar').
-        Show the options to the patient and let them choose.
+        Present the available methods to the patient and ask them to choose one.
+        Follow-up: pass the same abha_address and the method chosen by the patient to abha_address_verification_init.
 
-        Call abha_address_verification_init next with the same abha_address and the chosen method.
+        Do not skip this step and hardcode a method — not all methods are available for every ABHA address.
         """
         return await _service.search_abha_address_auth_methods(request.abha_address)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def abha_address_verification_init(request: ABHAAddressVerificationInitInput) -> Dict[str, Any]:
         """
-        STEP 2 of ABHA address verification. Call this after search_abha_address_auth_methods.
+        Sends an OTP to the patient via the chosen auth method to begin ABHA address verification.
 
-        Use the same abha_address from step 1 and the method the patient chose
-        from the available methods returned in that response.
+        Accepts:
+        - abha_address (same address passed to search_abha_address_auth_methods)
+        - method returned by search_abha_address_auth_methods and chosen by the patient
+        Returns: txn_id
 
-        Sends an OTP to the patient via the chosen method.
+        The patient will receive an OTP via the chosen method sent by this tool. Ask the patient for that OTP.
+        Follow-up: pass the txn_id returned by this tool and the OTP sent by this tool that the patient provides to abha_address_verification_confirm.
 
-        Response contains txn_id. Save it for the next step.
-        Call abha_address_verification_confirm next with the txn_id from this response
-        and the OTP the patient receives.
+        Do not use a method not returned by search_abha_address_auth_methods — it will fail.
+        Do not call without first calling search_abha_address_auth_methods.
         """
         return await _service.abha_address_verification_init(request.abha_address, request.method)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def abha_address_verification_confirm(request: ABHAAddressVerificationConfirmInput) -> Dict[str, Any]:
         """
-        FINAL STEP of ABHA address verification. Call this after abha_address_verification_init.
+        Verifies the OTP sent by abha_address_verification_init to complete ABHA address verification.
 
-        Use the txn_id from abha_address_verification_init's response.
-        Ask the patient for the OTP they received.
+        Accepts:
+        - txn_id returned by abha_address_verification_init
+        - otp sent by abha_address_verification_init that the patient received and provided
+        Returns: verified ABHA profile
 
-        On success, response contains the patient's verified ABHA profile.
-        No further tool call needed.
+        Do not call without the txn_id from abha_address_verification_init.
+        Do not call without first completing abha_address_verification_init.
         """
         return await _service.abha_address_verification_confirm(request.txn_id, request.otp)

@@ -2,7 +2,7 @@ import argparse
 import logging
 from fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 from tools.m1.abha_enrollment_tools import register_abha_enrollment_tools
 from tools.m1.abha_verification_tools import register_abha_verification_tools
@@ -33,6 +33,10 @@ def create_mcp_server() -> FastMCP:
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
+
+    @mcp.custom_route("/token", methods=["POST"])
+    async def token(request: Request) -> JSONResponse:
+        return JSONResponse({"access_token": "dummy", "token_type": "bearer", "expires_in": 3600})
 
     register_abha_enrollment_tools(mcp)
     register_abha_verification_tools(mcp)
