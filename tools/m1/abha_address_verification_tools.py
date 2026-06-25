@@ -17,8 +17,8 @@ _service = AbhaAddressVerificationService(_client)
 
 def _session_id(ctx: Context) -> str:
     try:
-        return ctx.meta.get("mcp-session-id", "default") or "default"
-    except Exception:
+        return ctx.session_id or "default"
+    except RuntimeError:
         return "default"
 
 

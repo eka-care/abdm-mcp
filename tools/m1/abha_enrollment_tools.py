@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict
 from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
@@ -15,22 +14,18 @@ from tools.m1.models import (
     EnrollABHAByBiometricInput,
 )
 
-logger = logging.getLogger(__name__)
-
 _client = ABDMGatewayClient()
 _service = AbhaEnrollmentService(_client)
 
 
 def _session_id(ctx: Context) -> str:
     try:
-        return ctx.meta.get("mcp-session-id", "default") or "default"
-    except Exception:
+        return ctx.session_id or "default"
+    except RuntimeError:
         return "default"
 
 
 def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> None:
-
-    logger.info("Registering ABHA enrollment tools...")
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_init(request: AadhaarEnrollmentInitInput, ctx: Context) -> Dict[str, Any]:
@@ -46,7 +41,6 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         Do not call if an enrollment session is already in progress for this patient — it will invalidate the existing txn_id.
         """
         await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_init")
-        logger.info(f"aadhaar_enrollment_init called: aadhaar_number={request.aadhaar_number}")
         return await _service.aadhaar_enrollment_init(request.aadhaar_number)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
