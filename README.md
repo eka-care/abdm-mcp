@@ -28,6 +28,36 @@ Edit `.env` with your gateway URL, facility ID, and backend API key.
 | `ABDM_FACILITY_ID` | Facility ID sent to the Go backend | `""` |
 | `ABDM_GATEWAY_API_KEY` | API key for the Go backend's `/api/v1` routes | `""` |
 
+## Flow Enforcement
+
+The MCP server enforces correct tool call sequencing per session. Calling a tool
+out of order (e.g. `aadhaar_enrollment_verify_otp` without first calling
+`aadhaar_enrollment_init`) returns a descriptive error telling the agent which
+tool must be called first.
+
+### Transport requirements
+
+| Transport | Session support | State storage |
+|---|---|---|
+| stdio | Single session (in-memory) | Python dict |
+| Stateful HTTP | `mcp-session-id` per session | Redis |
+| Stateless HTTP | None | Not supported |
+
+**Production deployments must use stateful HTTP or stdio.**
+Stateless HTTP (`stateless_http=True`) does not carry a session ID and cannot
+enforce flow ordering.
+
+### Redis configuration (stateful HTTP only)
+
+Set `ABDM_REDIS_URL` in `.env`:
+
+```env
+ABDM_REDIS_URL=redis://localhost:6379
+```
+
+If `ABDM_REDIS_URL` is empty, the server falls back to in-memory state
+(suitable for single-instance deployments).
+
 ## Run
 
 ```bash
