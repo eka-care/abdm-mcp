@@ -32,8 +32,11 @@ def register_abha_address_verification_tools(mcp: FastMCP, validator: FlowValida
         Accepts: abha_address (format: name@abdm)
         Returns: list of available auth methods (e.g. mobile, aadhaar)
 
-        Present the available methods to the patient and ask them to choose one.
-        Follow-up: pass the same abha_address and the method chosen by the patient to abha_address_verification_init.
+        Present the available methods to the patient exactly as returned and ask them to choose one.
+        Follow-up: pass the same abha_address to abha_address_verification_init, but map the method as follows before passing:
+        AADHAAR_OTP → aadhaar
+        MOBILE_OTP  → mobile
+        Do not pass the raw value returned by this tool directly — abha_address_verification_init uses different method strings.
 
         Do not skip this step and hardcode a method — not all methods are available for every ABHA address.
         """
@@ -47,7 +50,8 @@ def register_abha_address_verification_tools(mcp: FastMCP, validator: FlowValida
 
         Accepts:
         - abha_address (same address passed to search_abha_address_auth_methods)
-        - method returned by search_abha_address_auth_methods and chosen by the patient
+        - method returned by search_abha_address_auth_methods and chosen by the patient, based om available methods for the given abha_address,
+          either "mobile" or "aadhaar" strings is accepted, dont try to send anything else. 
         Returns: txn_id
 
         The patient will receive an OTP via the chosen method sent by this tool. Ask the patient for that OTP.

@@ -104,8 +104,19 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - user_detail (optional: name, dob — improves suggestion relevance)
         Returns: list of suggested ABHA addresses, txn_id
 
-        Display the suggested addresses to the patient exactly as returned — do not modify, append, or remove any suffix (e.g. do not add @abdm or @sbx). Ask the patient to choose one.
-        Follow-up: pass the txn_id returned by this tool and the address exactly as returned (no modifications) to aadhaar_enrollment_create_address.
+        TOOL RESPONSE IS THE GROUND TRUTH — TREAT IT AS READ-ONLY:
+        The response from this tool is authoritative and must be forwarded without any transformation.
+        Do not alter, infer, normalize, correct, or reconstruct any value from the tool response.
+        If you did not receive a value from this tool's response, do not produce one.
+
+        DISPLAYING TO PATIENT:
+        Show every suggested ABHA address to the patient character-for-character as returned by the tool.
+        Do not add, remove, or alter any character — including suffixes, prefixes, casing, or punctuation.
+        Ask the patient to pick one from the list as shown.
+
+        FORWARDING TO NEXT TOOL:
+        Pass the patient's chosen address to aadhaar_enrollment_create_address exactly as it appeared in this tool's response.
+        Do not reformat, trim, expand, or otherwise change the address string between receiving it here and sending it forward.
 
         Do not call unless the previous step returned skip_state = abha_create AND the patient explicitly chose to create a new ABHA address.
         Do not call if the patient chose to log into an existing profile — use a verification flow instead.
