@@ -62,7 +62,7 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         Case 2 — Existing ABHA found, mobile matches the registered mobile of an existing profile:
         skip_state = abha_create, response includes existing ABHA profiles.
         Present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
-        - Login → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        - Login → STOP this enrollment flow immediately. Do NOT call aadhaar_enrollment_suggest_address or aadhaar_enrollment_create_address. Ask the patient which profile they want and whether to verify by ABHA number or ABHA address, then start the chosen flow fresh: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address).
         - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Case 3 — Existing ABHA found, mobile does not match the registered mobile of an existing profile:
@@ -85,7 +85,7 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
 
         This step only runs when an existing ABHA was found but the mobile didn't match — so existing profiles are always present in the response.
         skip_state = abha_create, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
-        - Login → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        - Login → STOP this enrollment flow immediately. Do NOT call aadhaar_enrollment_suggest_address or aadhaar_enrollment_create_address. Ask the patient which profile they want and whether to verify by ABHA number or ABHA address, then start the chosen flow fresh: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address).
         - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
@@ -107,7 +107,8 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         Present the suggestions to the patient and ask them to choose one.
         Follow-up: pass the txn_id returned by this tool and the address the patient chose to aadhaar_enrollment_create_address.
 
-        Do not call unless the previous step returned skip_state = abha_create.
+        Do not call unless the previous step returned skip_state = abha_create AND the patient explicitly chose to create a new ABHA address.
+        Do not call if the patient chose to log into an existing profile — use a verification flow instead.
         Do not use the txn_id from aadhaar_enrollment_init directly.
         """
         await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_suggest_address")
@@ -123,6 +124,7 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - abha_address chosen by the patient from the list returned by aadhaar_enrollment_suggest_address (without @abdm suffix)
         Returns: complete ABHA profile, skip_state = abha_end — this is the final step of the enrollment flow.
 
+        Do not call with an existing ABHA address — this creates a new address from suggestions only.
         Do not pass an address not returned by aadhaar_enrollment_suggest_address — ABDM will reject it.
         Do not include the @abdm suffix in abha_address.
         Do not call without the txn_id from aadhaar_enrollment_suggest_address.
