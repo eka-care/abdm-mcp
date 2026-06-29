@@ -124,6 +124,8 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - abha_address chosen by the patient from the list returned by aadhaar_enrollment_suggest_address (without @abdm suffix)
         Returns: complete ABHA profile, skip_state = abha_end — this is the final step of the enrollment flow.
 
+        Present every field from the response to the patient — format it clearly but do not omit any field, including hmis_status and any other metadata fields.
+
         Do not call with an existing ABHA address — this creates a new address from suggestions only.
         Do not pass an address not returned by aadhaar_enrollment_suggest_address — ABDM will reject it.
         Do not modify the address in any way — pass it exactly as returned by aadhaar_enrollment_suggest_address, including its suffix (e.g. @sbx in sandbox). Do not substitute @abdm or any other suffix.
