@@ -52,12 +52,14 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - txn_id returned by aadhaar_enrollment_init
         - otp sent by aadhaar_enrollment_init that the patient received on their Aadhaar-linked mobile
         - mobile (10-digit, provided by the patient)
-        Returns: txn_id, skip_state
+        Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles linked to this Aadhaar
 
         Follow-up depends on skip_state:
-        - confirm_mobile_otp → this tool will trigger a new OTP to the patient's mobile, ask the patient for that OTP, pass the txn_id returned by this tool and that OTP to aadhaar_enrollment_verify_mobile_otp
-        - abha_create        → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
+        - confirm_mobile_otp → a new OTP has been sent to the patient's mobile, ask the patient for that OTP, pass the txn_id returned by this tool and that OTP to aadhaar_enrollment_verify_mobile_otp
+        - abha_create        → no existing ABHA found, or patient wants a new address — pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
         - abha_end           → enrollment complete, ABHA profile is in this response
+
+        If the response includes existing ABHA profiles, present them to the patient. This enrollment flow cannot log into an existing profile — to authenticate the patient into an existing ABHA, exit this flow and use verify_abha_init → verify_abha_confirm instead. Only continue this enrollment flow if the patient explicitly wants to create a new ABHA address.
 
         Do not call without the txn_id from aadhaar_enrollment_init.
         Do not call again after skip_state = abha_end.
