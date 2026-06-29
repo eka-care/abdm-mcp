@@ -60,7 +60,7 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - abha_end           → enrollment complete, ABHA profile is in this response
 
         If the response includes existing ABHA profiles, present them to the patient and ask: do you want to log into one of these existing profiles, or create a new ABHA address? Wait for the patient's answer before proceeding.
-        - Patient wants to log in → use verify_abha_init → verify_abha_confirm (do not continue this enrollment flow)
+        - Patient wants to log in → ask whether they prefer to verify by ABHA number (verify_abha_init → verify_abha_confirm) or by ABHA address (search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm), then use the chosen flow (do not continue this enrollment flow)
         - Patient wants a new address → continue with aadhaar_enrollment_suggest_address using the txn_id returned by this tool
 
         Do not call without the txn_id from aadhaar_enrollment_init.
