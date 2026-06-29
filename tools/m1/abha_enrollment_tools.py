@@ -46,25 +46,29 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_verify_otp(request: AadhaarEnrollmentVerifyOTPInput, ctx: Context) -> Dict[str, Any]:
         """
-        Verifies the OTP sent by aadhaar_enrollment_init and advances the enrollment state.
+        Verifies the OTP sent by aadhaar_enrollment_init and the patient's mobile number, and advances the enrollment state.
 
         Accepts:
         - txn_id returned by aadhaar_enrollment_init
         - otp sent by aadhaar_enrollment_init that the patient received on their Aadhaar-linked mobile
-        - mobile (10-digit, provided by the patient)
+        - mobile (10-digit mobile number provided by the patient)
         Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles linked to this Aadhaar
 
-        Follow-up depends on skip_state:
-        - confirm_mobile_otp → a new OTP has been sent to the patient's mobile, ask the patient for that OTP, pass the txn_id returned by this tool and that OTP to aadhaar_enrollment_verify_mobile_otp
-        - abha_create        → no existing ABHA found, or patient wants a new address — pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
-        - abha_end           → enrollment complete, ABHA profile is in this response
+        There are three cases based on what ABDM finds:
 
-        If the response includes existing ABHA profiles, present them to the patient and ask: do you want to log into one of these existing profiles, or create a new ABHA address? Wait for the patient's answer before proceeding.
-        - Patient wants to log in → ask whether they prefer to verify by ABHA number (verify_abha_init → verify_abha_confirm) or by ABHA address (search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm), then use the chosen flow (do not continue this enrollment flow)
-        - Patient wants a new address → continue with aadhaar_enrollment_suggest_address using the txn_id returned by this tool
+        Case 1 — No existing ABHA:
+        skip_state = abha_create → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address to continue creating a new ABHA.
+
+        Case 2 — Existing ABHA found, mobile matches the registered mobile of an existing profile:
+        skip_state = abha_end, response includes existing ABHA profiles.
+        Present the profiles to the patient and ask: do you want to log into one of these existing profiles, or create a new ABHA address?
+        - Login into existing → patient selects a profile, then start a fresh verification flow based on their preference: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
+
+        Case 3 — Existing ABHA found, mobile does not match the registered mobile of an existing profile:
+        skip_state = confirm_mobile_otp → a new OTP has been sent to the patient's provided mobile for secondary verification. Ask the patient for that OTP and pass the txn_id returned by this tool and that OTP to aadhaar_enrollment_verify_mobile_otp. After that step, the same choice as Case 2 will apply.
 
         Do not call without the txn_id from aadhaar_enrollment_init.
-        Do not call again after skip_state = abha_end.
         """
         await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_verify_otp")
         return await _service.aadhaar_enrollment_verify_otp(request.txn_id, request.otp, request.mobile)
@@ -72,19 +76,21 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True))
     async def aadhaar_enrollment_verify_mobile_otp(request: AadhaarEnrollmentVerifyMobileOTPInput, ctx: Context) -> Dict[str, Any]:
         """
-        Verifies the OTP sent to the patient's mobile by aadhaar_enrollment_verify_otp as a secondary confirmation step.
+        Verifies the secondary OTP sent to the patient's mobile when aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp (i.e. the provided mobile did not match the registered mobile of an existing ABHA).
 
         Accepts:
         - txn_id returned by aadhaar_enrollment_verify_otp
-        - otp sent to the patient's mobile when aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp
-        Returns: txn_id, skip_state
+        - otp sent to the patient's mobile by aadhaar_enrollment_verify_otp
+        Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles
 
-        Follow-up depends on skip_state:
-        - abha_create → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address
-        - abha_end    → enrollment complete, ABHA profile is in this response
+        After this step the same two outcomes apply as Case 2 in aadhaar_enrollment_verify_otp:
+        - skip_state = abha_end, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
+          - Login into existing → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+          - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
+        - skip_state = abha_create → no existing ABHA found, pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
-        Do not use the txn_id from aadhaar_enrollment_init — it must be the txn_id from aadhaar_enrollment_verify_otp.
+        Do not use the txn_id from aadhaar_enrollment_init — use the txn_id from aadhaar_enrollment_verify_otp.
         """
         await validator.validate_and_record(_session_id(ctx), "aadhaar_enrollment_verify_mobile_otp")
         return await _service.aadhaar_enrollment_verify_mobile_otp(request.txn_id, request.otp)
