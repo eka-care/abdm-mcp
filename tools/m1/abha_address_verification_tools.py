@@ -67,7 +67,7 @@ def register_abha_address_verification_tools(mcp: FastMCP, validator: FlowValida
         Accepts:
         - txn_id returned by abha_address_verification_init
         - otp sent by abha_address_verification_init that the patient received and provided
-        Returns: verified ABHA profile
+        Returns: verified ABHA profile — present every field to the patient, formatted clearly but with nothing omitted.
 
         Do not call without the txn_id from abha_address_verification_init.
         Do not call without first completing abha_address_verification_init.

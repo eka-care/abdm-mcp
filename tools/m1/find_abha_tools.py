@@ -73,7 +73,7 @@ def register_find_abha_tools(mcp: FastMCP, validator: FlowValidator) -> None:
         Accepts:
         - txn_id returned by find_abha_init
         - otp sent by find_abha_init that the patient received and provided
-        Returns: ABHA profile
+        Returns: ABHA profile — present every field to the patient, formatted clearly but with nothing omitted.
 
         Do not call without the txn_id from find_abha_init.
         Do not call without first completing find_abha_init.
@@ -87,7 +87,7 @@ def register_find_abha_tools(mcp: FastMCP, validator: FlowValidator) -> None:
         Fetches the current ABHA profile for a patient by their ABHA address.
 
         Accepts: abha_address (format: name@abdm)
-        Returns: name, ABHA number, gender, date of birth, mobile, address, KYC status
+        Returns: ABHA profile — present every field to the patient, formatted clearly but with nothing omitted.
 
         Do not call without an active session for this ABHA address — it will fail. Use get_session to check session state if unsure.
         """

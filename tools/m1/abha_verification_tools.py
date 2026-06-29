@@ -53,8 +53,8 @@ def register_abha_verification_tools(mcp: FastMCP, validator: FlowValidator) -> 
         Returns: ABHA profile, or skip_state = abha_select with abha_profiles list
 
         Follow-up:
-        - skip_state = abha_select → present abha_profiles to patient, call this tool again with the txn_id returned by this tool and the abha_number the patient selects. Leave otp empty.
-        - skip_state = abha_end    → verification complete, profile is in this response
+        - skip_state = abha_select → present abha_profiles to patient exactly as returned, call this tool again with the txn_id returned by this tool and the abha_number the patient selects. Leave otp empty.
+        - skip_state = abha_end    → verification complete, profile is in this response — present every field to the patient, formatted clearly but with nothing omitted.
 
         Do not provide both otp and abha_number in the same call — they serve different sub-steps.
         Do not call without the txn_id from verify_abha_init.
