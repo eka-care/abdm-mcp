@@ -83,11 +83,10 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - otp sent to the patient's mobile by aadhaar_enrollment_verify_otp
         Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles
 
-        After this step the same two outcomes apply as Case 2 in aadhaar_enrollment_verify_otp:
-        - skip_state = abha_end, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
-          - Login into existing → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
-          - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
-        - skip_state = abha_create → no existing ABHA found, pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
+        After this step, existing ABHA profiles are always present in the response (this step only runs when an existing ABHA was found but the mobile didn't match).
+        skip_state = abha_end, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
+        - Login into existing → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
         Do not use the txn_id from aadhaar_enrollment_init — use the txn_id from aadhaar_enrollment_verify_otp.
