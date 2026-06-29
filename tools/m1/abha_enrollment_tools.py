@@ -54,15 +54,15 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - mobile (10-digit mobile number provided by the patient)
         Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles linked to this Aadhaar
 
-        There are three cases based on what ABDM finds:
+        There are three cases based on what ABDM finds. skip_state is always abha_create or confirm_mobile_otp from this step — never abha_end.
 
         Case 1 — No existing ABHA:
-        skip_state = abha_create → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address to continue creating a new ABHA.
+        skip_state = abha_create, no existing profiles in response → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Case 2 — Existing ABHA found, mobile matches the registered mobile of an existing profile:
-        skip_state = abha_end, response includes existing ABHA profiles.
-        Present the profiles to the patient and ask: do you want to log into one of these existing profiles, or create a new ABHA address?
-        - Login into existing → patient selects a profile, then start a fresh verification flow based on their preference: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        skip_state = abha_create, response includes existing ABHA profiles.
+        Present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
+        - Login → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
         - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Case 3 — Existing ABHA found, mobile does not match the registered mobile of an existing profile:
@@ -83,9 +83,9 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         - otp sent to the patient's mobile by aadhaar_enrollment_verify_otp
         Returns: txn_id, skip_state, and optionally a list of existing ABHA profiles
 
-        After this step, existing ABHA profiles are always present in the response (this step only runs when an existing ABHA was found but the mobile didn't match).
-        skip_state = abha_end, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
-        - Login into existing → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
+        This step only runs when an existing ABHA was found but the mobile didn't match — so existing profiles are always present in the response.
+        skip_state = abha_create, response includes existing ABHA profiles → present the profiles to the patient and ask: log into an existing profile or create a new ABHA address?
+        - Login → patient selects a profile, start a fresh verification flow: verify_abha_init → verify_abha_confirm (by ABHA number) or search_abha_address_auth_methods → abha_address_verification_init → abha_address_verification_confirm (by ABHA address). Do not continue this enrollment flow.
         - Create new → pass the txn_id returned by this tool to aadhaar_enrollment_suggest_address.
 
         Do not call unless aadhaar_enrollment_verify_otp returned skip_state = confirm_mobile_otp.
@@ -121,7 +121,7 @@ def register_abha_enrollment_tools(mcp: FastMCP, validator: FlowValidator) -> No
         Accepts:
         - txn_id returned by aadhaar_enrollment_suggest_address
         - abha_address chosen by the patient from the list returned by aadhaar_enrollment_suggest_address (without @abdm suffix)
-        Returns: complete ABHA profile
+        Returns: complete ABHA profile, skip_state = abha_end — this is the final step of the enrollment flow.
 
         Do not pass an address not returned by aadhaar_enrollment_suggest_address — ABDM will reject it.
         Do not include the @abdm suffix in abha_address.
